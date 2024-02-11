@@ -1,0 +1,119 @@
+\section{Convolutional Neural Network (35 pts)}
+
+In this problem we will implement convolutional neural networks for an image classification task. The data is the same as in the previous problem. 
+
+Again, the dataset is stored in a pickle file, with 5000 images for training and 2000 for testing. Once you download the dataset, replace \texttt{CIFAR\_FILENAME} in the main function with the path where you stored the dataset and it would load the data for you. This time, the data is prepared in the following format:
+
+\texttt{trainX} / \texttt{testX} -- $(5000/2000, 3, 32, 32)$ numpy array of images normalized to [0, 1].\newline
+\texttt{trainy} / \texttt{testy} -- $(5000/2000, 10)$ numpy array of one-hot vectors representing labels.
+
+\subsection{Implementation (16 pts)}
+
+In the Problem 6 folder, \textbf{cnn.py} is the only file you need to work on. \textbf{tests.py} and \textbf{tests.pk} are to help you test your implementation locally. Passing these local tests does not guarantee you passing the final online auto-grading tests, but failing locally very likely means also failing online. The following are terminal commands to run single module test and all modules test. 
+\begin{verbatim}
+    python -m unittest tests.TestReLU
+    python -m unittest tests
+\end{verbatim}
+
+% \subsubsection*{1.2 Backpropagation Algorithm for CNNs}
+Below is a list of classes we will implement. Implement wherever the code template says \texttt{pass}. Reading \texttt{tests.py} might help you debug your implementation. 
+
+\begin{itemize}
+
+    \item {\bf ReLU} ({\bf 0 points}): ReLU layer. Available unit tests: \texttt{TestReLU}.
+    
+    \item {\bf Conv} ({\bf 7 points}): Convolutional layer. You will also need to implement functions \textbf{im2col} and \textbf{im2col\_bw} in order to vectorize the forward and backward computation of convolutional layer 
+    \footnote{The following links from the cs231n course at Stanford are very helpful: \url{http://cs231n.stanford.edu/slides/2016/winter1516_lecture11.pdf}(starting on slide 66) and \url{http://cs231n.github.io/convolutional-networks/}}.  
+    Available unit tests: \texttt{TestIm2Col}, \\ \texttt{TestConvWeightsBias}, \texttt{TestConvForward}, \texttt{TestConvBackward} and \texttt{TestConvUpdate}.
+    
+    \item {\bf Maxpool} ({\bf 4 points}): Max Pooling layer. Available unit tests: \texttt{TestMaxPoolForward} and \texttt{TestMaxPoolBackward}.
+    
+    \item {\bf LinearLayer} ({\bf 2 points}): Fully Connected layer, or Linear Layer. Available unit tests: \texttt{TestFCWeightsBias}, \texttt{TestLinearForward}, \texttt{TestLinearBackward} and \texttt{TestLinearUpdate}.
+    
+    \item {\bf SoftMaxCrossEntropyLoss} ({\bf 0 points}): The layer of softmax and cross-entropy loss. The input is the pre-softmax logits, and the output is the \textbf{mean} of cross-entropy loss across samples in a batch. 
+
+    \item {\bf ConvNet} ({\bf 3 points}): This is where you will initialize and call all the previous layers to implement the convolutional network. Available unit tests: \texttt{TestConvNet}.
+    
+\end{itemize}
+\pagebreak
+\textbf{Tips}:
+\begin{itemize}
+    \item Linear layer weights initialization is the same with Problem 5. Convolutional layer weights should be initialized as: \[W^k_{i,j}\sim\texttt{Uniform}(-b,b) \;,\quad b=\sqrt{\frac{6}{(f+c)*h*w}}, \]
+    where $k$, $i$, $j$ are indices for network layer and nodes, $f$ the number of filters (the number of output channels), $c$ the number of input channels, $h$ and $w$ the filter height and width.
+    %\item You can start with these hyperparamters. Learning rate: 0.001, Momentum: 0.9, Batch size: 128. Other hyperparameters very likely could give better performance. Hyperparameters should be consistent when you compare different network architectures. 
+\end{itemize}
+
+\subsection{Experiments (19 pts)}
+In this section, you will implement different network architectures to see how they affect the performance. 
+
+The network models will take images as inputs and give softmax output over 10 classes. During training, we will perform gradient descent with momentum to minimize Cross-Entropy Loss. Run the optimization for \textcolor{blue}{50} epochs each time. Using the following hyperparameters parameters for training: batch size = $128$, learning rate = $0.001$, momentum = $0.9$. %If you observe underfitting, continue training for more epochs until overfitting. 
+
+\begin{enumerate}
+    \item \textbf{(12 pts)} For every architecture, plot the train and test loss together on one plot, with loss on the y-axis against epoch number on x-axis. Similarly, plot the train and test accuracy after every epoch. Label each curve and all axes. Report the best loss and accuracy for training and testing achieved.
+    
+    For those with CNN layers, the stride is 1 and the padding size is 2.
+    
+    \pagebreak
+
+    \begin{enumerate}
+        \item \textbf{1conv1filter (3 pts)} 
+            A convolutional layer with one $6\times6$ filter and ReLU activation, a $2\times2$ max pooling layer, a linear layer, a softmax layer.
+
+            \textit{Hint: This simple architecture is mostly for helping you debug your convolutional layer. There is no need to worry about poor performance as long as  it significantly improves for the next two architectures.}
+            
+            \begin{soln}{height=9cm}
+            \SixBAA
+            \end{soln}
+            
+        \item \textbf{1conv5filter (3 pts)}
+            A convolutional layer with five $4\times4$ filters and ReLU activation, a $2\times2$ max pooling layer, a linear layer, a softmax layer.
+            
+            \begin{soln}{height=9cm}
+            \SixBAB   
+            \end{soln}
+    
+        \item \textbf{3conv5filter (3 pts)}
+            A convolutional layer with five $4\times4$ filter and ReLU activation, a $2\times2$ max pooling layer, a convolutional layer with five $4\times4$ filter and ReLU activation, a convolutional layer with five $4\times4$ filter and ReLU activation, a linear layer, a softmax layer.
+            
+            \begin{soln}{height=8cm}
+            \SixBAC
+            \end{soln}
+            
+        \item \textbf{Full comparison between MLP and CNN (3 pts)}
+            Plot the test accuracy for all the experiments you have done so far for both MLP and CNN. Also, explain why you think one has better performance than the other.\\\textit{Hint: Look at the number of parameters of each network}.
+            
+            \begin{soln}{height=9cm}
+            \SixBAD
+            \end{soln}
+            
+    \end{enumerate}
+    
+    \pagebreak
+    
+    \item \textbf{(7 pts)} Compare different architectures based on your own results. 
+    \begin{enumerate}
+            \item Compare (a) and (b). (2 pts)
+                \begin{soln}{height=4cm}
+                \SixBBA
+                \end{soln}
+
+            \item Compare (b) and (c). (2 pts)
+                \begin{soln}{height=4cm}
+                \SixBBB
+                \end{soln}
+
+            \item Compare the best CNN model with the best MLP model. (2 pts)
+                \begin{soln}{height=4cm}
+                \SixBBC
+                \end{soln}
+
+            \item Which one is your best performing CNN network (on the test dataset)? (1 pt)
+                \begin{soln}{height=4cm}
+                \SixBBD
+                \end{soln}
+    \end{enumerate}
+    
+
+\end{enumerate}
+
+

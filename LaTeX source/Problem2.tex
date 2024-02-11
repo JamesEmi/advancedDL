@@ -1,0 +1,41 @@
+\section{Dropout (8 pts)}
+
+Consider once again a dataset $\D$ of $N$ training points $\left(\bx^{(n)}, y^{(n)}\right)$ where $\bx^{(n)} \in \R^D$ and $y^{(n)} \in \R$. For this question it will be easier to adopt a matrix notation: let $X \in \R^{N \times D}$ be the usual design matrix containing datapoints as rows, and $\by \in \R^N$ the target vector. Our sum-of-squares loss for our neural network is now written compactly as
+\begin{align}
+L(\bw) = \norm{\by - X \bw}^2
+\end{align}
+
+Recall the dropout scheme seen in class: any input dimension is retained with probability $p$ and the input can be expressed as $R \odot X$ where $R \in \{0,1\}^{N \times D}$ is a random matrix with $R_{ij} \sim \text{Bernoulli}(p)$ and $\odot$ denotes an element-wise product. Marginalizing the noise, our loss function becomes
+\begin{align}
+L_{\text{dropout}}(\bw) = \E_{R}\left[ \norm{\by - (R \odot X) \bw}^2 \right]
+\end{align}
+
+
+\subsection{(2 pts)}
+
+Let $N=D=1$, so that $X$ and $\by$ are just scalar values, and thus $\bw$ is also scalar. Show that dropout with linear regression is equivalent in expectation to a certain form of ridge regression. More specifically, you should show that
+\begin{align}
+L_{\text{dropout}}(\bw) = \norm{\by - p X \bw}^2 + p(1-p)\norm{X \bw}^2
+\end{align}
+
+\begin{soln}{height=10cm}
+\TwoA
+\end{soln}
+
+\subsection{(6 pts)}
+
+Show the same statement, but for arbitrary values of $N$ and $D$. That is, show that
+\begin{align}
+L_{\text{dropout}}(\bw) = \norm{\by - p X \bw}^2 + p(1-p)\norm{\Gamma \bw}^2
+\end{align}
+where $\Gamma = (\text{diag}(X^T X))^{1/2}$. 
+
+Hint: Try proving the case for $N=1$ and arbitrary values of $D$, and extend that to datasets of $N$ points.
+
+\begin{soln}{height=17cm}
+\TwoB
+\end{soln}
+
+\begin{qauthor}
+All collaborated
+\end{qauthor}

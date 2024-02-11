@@ -1,0 +1,60 @@
+\section{Regularization (5 pts)}
+
+Consider a dataset $\D$ of $N$ training points $\left(\bx^{(n)}, y^{(n)}\right)$ where $\bx^{(n)} \in \R^D$ and $y^{(n)} \in \R$, a linear model of the form
+\begin{align}
+f(\bx, \bw) = \sum_{i=1}^D w_i x_i + b = \bw^T \bx + b
+\end{align}
+together with a sum-of-squares error function of the form
+\begin{align}
+L(\bw, \D) = \sum_{n=1}^N \left(f(\bx^{(n)}, \bw) - y^{(n)}\right)^2
+\end{align}
+Now suppose that Gaussian noise $\epsilon_i \sim N(0, \sigma^2)$ is added independently to each of the input variables $x_i$. Show that minimizing $L(\bw)$ averaged over the noise distribution is equivalent to minimizing the sum-of-squares error for noise-free input variables with the addition of a weight-decay regularization term with a certain coefficient $\lambda$ (that you should find). % N \sigma^2
+
+In other words, for a perturbed dataset $\D'$ with data points $\bx' = \bx + \bepsilon$ where $\bepsilon \sim N(0, \sigma^2 \I)$, you need to show
+\begin{align}
+\E_{\bepsilon}\left[L(\bw, \D')\right] = L(\bw, \D) + \lambda \norm{\bw}^2
+\end{align}
+
+\pagebreak
+
+\begin{soln}{height=\textheight}
+\One
+\end{soln}
+
+\begin{qauthor}
+Theo, Ankit, Solution adapted to notation from Bishop's book. 
+\end{qauthor}
+
+%\section*{Problem 1 (5 pts)}
+%This question will test your general understanding of overfitting
+%as it relates to model complexity and training set size.
+%Consider a continuous domain and a smooth joint distribution over
+%inputs and outputs, so that no test or training case is ever duplicated exactly.
+%\begin{enumerate}
+%\item
+%For a fixed training set size, sketch a graph of the typical
+%behavior of training error rate (y-axis) versus model complexity (x-axis).
+%Add to this graph a curve showing the typical behavior of the corresponding test
+%error rate versus model complexity, on the same axes. (Assume that we have an infinite test set drawn independently from the
+%same joint distribution as the training set).
+%Mark a vertical line showing where you think the most complex model
+%your data supports is; choose your horizontal range so that this line is
+%neither on the extreme left nor on the extreme right. Indicate on your vertical
+%axis where zero error is and draw your graphs with increasing error upwards and
+%increasing complexity %rightwards. \\
+
+
+%\item  For a fixed model complexity, sketch a graph of the typical behavior of training error rate (y-axis) versus training set size (x-axis). Add to this graph a curve showing the typical behavior of test error rate versus training set size, on the same axes (again on an iid infinite test set). Indicate on your vertical axis where zero error is and draw your graphs with increasing error upwards and increasing training set size rightwards. \\
+
+
+%\item One of the commonly used regularization methods in neural networks is \emph{early stopping}. Argue qualitatively why (or why not) early stopping is a reasonable regularization metric.
+%\\
+
+%\end{enumerate}
+%\begin{soln}{height=18cm}
+%\begin{figure}
+%    \centering
+%    \includegraphics[width=20cm]{figures/graphs.png}
+%\end{figure}
+
+%\end{soln}
