@@ -28,28 +28,26 @@ def im2col(X, k_height, k_width, padding=1, stride=1):
     The axes ordering need to be (C, k_height, k_width, H, W, N) here, while in
     reality it can be other ways if it weren't for autograding tests.
     """
-    N,C,H,W = X.shape
-    
-    # Output dimensions
+    N, C, H, W = X.shape
     H_out = (H + 2 * padding - k_height) // stride + 1
     W_out = (W + 2 * padding - k_width) // stride + 1
-
-    # Pad the input
-    X_padded = np.pad(X, ((0,0), (0,0), (padding,padding), (padding,padding)), mode='constant', constant_values=0)
+    X_padded = np.pad(X, ((0,0), (0,0), (padding, padding), (padding, padding)), mode='constant', constant_values=0)
     
-    # Initialize the im2col matrix
+    # Initialize the im2col matrix with the same original shape
     cols = np.zeros((C * k_height * k_width, H_out * W_out * N))
     
     col_idx = 0
-    # for n in range(N):  # iterate over the batch
-        for h in range(0, H_out):
-            for w in range(0, W_out):
+    for n in range(N):  # iterate over the batch
+        for h in range(H_out):
+            for w in range(W_out):
                 patch = X_padded[n, :, h*stride : h*stride+k_height, w*stride : w*stride+k_width]
                 cols[:, col_idx] = patch.flatten()
                 col_idx += 1
-                
-    return cols
     
+    # Transpose the output matrix so that each patch is stored in a row instead of a column
+    rows = cols.T  # Transpose operation
+    
+    return rows
 
 def im2col_bw(grad_X_col, X_shape, k_height, k_width, padding=1, stride=1):
     """
