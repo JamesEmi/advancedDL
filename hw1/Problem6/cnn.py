@@ -24,12 +24,32 @@ def im2col(X, k_height, k_width, padding=1, stride=1):
     Construct the im2col matrix of intput feature map X.
     X: 4D tensor of shape [N, C, H, W], input feature map
     k_height, k_width: height and width of convolution kernel
-    return a 2D array of shape (C*k_height*k_width, H*W*N)
+    return a 2D array of shape (C*k_height*k_width, H_out*W_out*N)
     The axes ordering need to be (C, k_height, k_width, H, W, N) here, while in
     reality it can be other ways if it weren't for autograding tests.
     """
-    pass
+    N,C,H,W = X.shape
+    
+    # Output dimensions
+    H_out = (H + 2 * padding - k_height) // stride + 1
+    W_out = (W + 2 * padding - k_width) // stride + 1
 
+    # Pad the input
+    X_padded = np.pad(X, ((0,0), (0,0), (padding,padding), (padding,padding)), mode='constant', constant_values=0)
+    
+    # Initialize the im2col matrix
+    cols = np.zeros((C * k_height * k_width, H_out * W_out * N))
+    
+    col_idx = 0
+    # for n in range(N):  # iterate over the batch
+        for h in range(0, H_out):
+            for w in range(0, W_out):
+                patch = X_padded[n, :, h*stride : h*stride+k_height, w*stride : w*stride+k_width]
+                cols[:, col_idx] = patch.flatten()
+                col_idx += 1
+                
+    return cols
+    
 
 def im2col_bw(grad_X_col, X_shape, k_height, k_width, padding=1, stride=1):
     """
@@ -37,7 +57,35 @@ def im2col_bw(grad_X_col, X_shape, k_height, k_width, padding=1, stride=1):
     grad_X_col: a 2D array
     return X_grad as a 4D array in X_shape
     """
-    pass
+    N, C, H, W = X_shape
+    H_padded, W_padded = H + 2 * padding, W + 2 * padding
+    H_out = (H_padded - k_height) // stride + 1
+    W_out = (W_padded - k_width) // stride + 1
+
+    # Initialize the gradient tensor with padding
+    X_grad_padded = np.zeros((N, C, H_padded, W_padded))
+
+    # Iterate over each column in grad_X_col
+    col_idx = 0
+    for n in range(N):
+        for h in range(H_out):
+            for w in range(W_out):
+                # Map column back to a patch
+                col = grad_X_col[:, col_idx]
+                patch = col.reshape(C, k_height, k_width)
+                # Add patch to corresponding location in the gradient tensor
+                h_start, w_start = h * stride, w * stride
+                X_grad_padded[n, :, h_start:h_start+k_height, w_start:w_start+k_width] += patch
+                col_idx += 1
+
+    # Remove padding
+    if padding > 0:
+        X_grad = X_grad_padded[:, :, padding:-padding, padding:-padding]
+    else:
+        X_grad = X_grad_padded
+
+    return X_grad
+
 
 
 class Transform:
@@ -88,14 +136,15 @@ class ReLU(Transform):
         """
         returns ReLU(x)
         """
-        pass
+        self.mask = (x>0).astype(x.dtype) #save the mask of positives
+        return x*self.mask
 
     def backward(self, dloss):
         """
         dloss is the gradients wrt the output of ReLU
         returns gradients wrt the input to ReLU
         """
-        pass
+        return dloss * self.mask
 
 
 class Flatten(Transform):
@@ -434,7 +483,7 @@ if __name__ == "__main__":
 
     # change this to where you downloaded the file,
     # usually ends with 'cifar10-subset.pkl'
-    CIFAR_FILENAME = "../cifar10-subset.pkl"
+    CIFAR_FILENAME = "/noteboooks/ADL/hw1/cifar10-subset.pkl"
     with open(CIFAR_FILENAME, "rb") as f:
         data = pickle.load(f)
 
