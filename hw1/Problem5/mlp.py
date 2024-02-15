@@ -75,13 +75,16 @@ class ReLU(Transform):
 
     def __init__(self):
         Transform.__init__(self)
-        pass
-
+        # super().__init__()
+        self.cache = None
+        
     def forward(self, x, train=True):
-        pass
-
+        self.cache = x
+        return np.maximum(0, x)
+    
     def backward(self, grad_wrt_out):
-        pass
+        grad = grad_wrt_out * (self.cache > 0)
+        return grad
 
 
 class LinearMap(Transform):
@@ -102,21 +105,28 @@ class LinearMap(Transform):
         self.lr = lr
         self.W = random_weight_init(indim, outdim)
         self.b = zeros_bias_init(outdim)
+        self.gradW = np.zeros_like(self.W)
+        self.gradb = np.zeros_like(self.b)
+        self.momentumW = np.zeros_like(self.W)
+        self.momentumb = np.zeros_like(self.b)
 
     def forward(self, x):
         """
         x shape (batch_size, indim)
         return shape (batch_size, outdim)
         """
-        pass
-
+        self.x = x
+        return np.dot(x, self.W) + self.b
+        
     def backward(self, grad_wrt_out):
         """
         grad_wrt_out shape (batch_size, outdim)
         return shape (batch_size, indim)
         Your backward call should Accumulate gradients.
         """
-        pass
+        self.gradW = self.x.T.dot(grad_wrt_out)
+        self.gradb = np.sum(grad_wrt_out, axis=0)
+        return grad_wrt_out.dot(self.W.T)
 
     def step(self):
         """
@@ -125,11 +135,15 @@ class LinearMap(Transform):
         Make sure your gradient step takes into account momentum.
         Use alpha as the momentum parameter.
         """
-        pass
+        self.momentumW = self.alpha * self.momentumW + (1 - self.alpha) * self.gradW
+        self.momentumb = self.alpha * self.momentumb + (1 - self.alpha) * self.gradb
+        self.W -= self.lr * self.momentumW
+        self.b -= self.lr * self.momentumb
 
     def zerograd(self):
         # reset parameters
-        pass
+        self.gradW = np.zeros_like(self.W)
+        self.gradb = np.zeros_like(self.b)
 
     def getW(self):
         # return weights
@@ -148,6 +162,8 @@ class SoftmaxCrossEntropyLoss:
     """
     Implement this class
     """
+    def __init__(self):
+        self.cache = None
 
     def forward(self, logits, labels):
         """
@@ -157,21 +173,29 @@ class SoftmaxCrossEntropyLoss:
         returns loss as scalar
         (your loss should be a mean value on batch_size)
         """
-        pass
+        exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))
+        self.softmax = exps / np.sum(exps, axis=1, keepdims=True)
+        self.labels = labels
+        loss = -np.sum(labels * np.log(self.softmax + 1e-8)) / logits.shape[0]
+        return loss
 
     def backward(self):
         """
         return shape (batch_size, num_classes)
         (don't forget to divide by batch_size because your loss is a mean)
         """
-        pass
+        grad = (self.softmax - self.labels) / self.labels.shape[0]
+        return grad
 
     def getAccu(self):
         """
         return accuracy here (as you wish)
         This part is not autograded.
         """
-        pass
+        predictions = np.argmax(self.softmax, axis=1)
+        labels = np.argmax(self.labels, axis=1)
+        accuracy = np.mean(predictions == labels)
+        return accuracy
 
 
 class SingleLayerMLP(Transform):
@@ -181,23 +205,36 @@ class SingleLayerMLP(Transform):
 
     def __init__(self, indim, outdim, hiddenlayer=100, alpha=0.1, lr=0.01):
         Transform.__init__(self)
-        pass
+        self.linear1 = LinearMap(indim, hiddenlayer, alpha, lr)
+        self.relu = ReLU()
+        self.linear2 = LinearMap(hiddenlayer, outdim, alpha, lr)
+        self.alpha = alpha
+        self.lr = lr
 
     def forward(self, x, train=True):
         """
         x shape (batch_size, indim)
         return shape (batch_size, outdim)
         """
-        pass
-
+        self.x = x
+        self.x_linear1 = self.linear1.forward(x)
+        self.x_relu = self.relu.forward(self.x_linear1)
+        self.out = self.linear2.forward(self.x_relu)
+        return self.out
+    
     def backward(self, grad_wrt_out):
-        pass
+        grad_wrt_linear2 = self.linear2.backward(grad_wrt_out)
+        grad_wrt_relu = self.relu.backward(grad_wrt_linear2)
+        grad_wrt_linear1 = self.linear1.backward(grad_wrt_relu)
+        return grad_wrt_linear1
 
     def step(self):
-        pass
+        self.linear1.step()
+        self.linear2.step()
 
     def zerograd(self):
-        pass
+        self.linear1.zerograd()
+        self.linear2.zerograd()
 
     def loadparams(self, Ws, bs):
         """
@@ -207,7 +244,8 @@ class SingleLayerMLP(Transform):
         e.g., Ws may be [LinearMap1.W, LinearMap2.W]
         Used for autograder.
         """
-        pass
+        self.linear1.loadparams(Ws[0], bs[0])
+        self.linear2.loadparams(Ws[1], bs[1])
 
     def getWs(self):
         """
@@ -215,7 +253,7 @@ class SingleLayerMLP(Transform):
         You need to implement this.
         Return weights for first layer then second and so on...
         """
-        pass
+        return [self.linear1.getW(), self.linear2.getW()]
 
     def getbs(self):
         """
@@ -223,7 +261,7 @@ class SingleLayerMLP(Transform):
         You need to implement this.
         Return bias for first layer then second and so on...
         """
-        pass
+        return [self.linear1.getb(), self.linear2.getb()]
 
 
 class TwoLayerMLP(Transform):
@@ -234,28 +272,52 @@ class TwoLayerMLP(Transform):
 
     def __init__(self, inp, outp, hiddenlayers=[100, 100], alpha=0.1, lr=0.01):
         Transform.__init__(self)
-        pass
+        `self.linear1 = LinearMap(inp, hiddenlayers[0], alpha, lr)
+        self.relu1 = ReLU()
+        self.linear2 = LinearMap(hiddenlayers[0], hiddenlayers[1], alpha, lr)
+        self.relu2 = ReLU()
+        self.linear3 = LinearMap(hiddenlayers[1], outp, alpha, lr)
+        self.alpha = alpha
+        self.lr = lr
+
 
     def forward(self, x, train=True):
-        pass
+        pself.x = x
+        self.x_linear1 = self.linear1.forward(x)
+        self.x_relu1 = self.relu1.forward(self.x_linear1)
+        self.x_linear2 = self.linear2.forward(self.x_relu1)
+        self.x_relu2 = self.relu2.forward(self.x_linear2)
+        self.out = self.linear3.forward(self.x_relu2)
+        return self.out
 
     def backward(self, grad_wrt_out):
-        pass
-
+        grad_wrt_linear3 = self.linear3.backward(grad_wrt_out)
+        grad_wrt_relu2 = self.relu2.backward(grad_wrt_linear3)
+        grad_wrt_linear2 = self.linear2.backward(grad_wrt_relu2)
+        grad_wrt_relu1 = self.relu1.backward(grad_wrt_linear2)
+        grad_wrt_linear1 = self.linear1.backward(grad_wrt_relu1)
+        return grad_wrt_linear1
+    
     def step(self):
-        pass
+        self.linear1.step()
+        self.linear2.step()
+        self.linear3.step()
 
     def zerograd(self):
-        pass
+        self.linear1.zerograd()
+        self.linear2.zerograd()
+        self.linear3.zerograd()
 
     def loadparams(self, Ws, bs):
-        pass
-
+        self.linear1.zerograd()
+        self.linear2.zerograd()
+        self.linear3.zerograd()
+        
     def getWs(self):
-        pass
+        return [self.linear1.getW(), self.linear2.getW(), self.linear3.getW()]
 
     def getbs(self):
-        pass
+        return [self.linear1.getb(), self.linear2.getb(), self.linear3.getb()]
 
 
 class Dropout(Transform):
@@ -390,7 +452,7 @@ if __name__ == "__main__":
 
     # change this to where you downloaded the file,
     # usually ends with 'cifar10-subset.pkl'
-    CIFAR_FILENAME = "../cifar10-subset.pkl"
+    CIFAR_FILENAME = "/noteboooks/ADL/hw1/cifar10-subset.pkl"
     with open(CIFAR_FILENAME, "rb") as f:
         data = pickle.load(f)
 
