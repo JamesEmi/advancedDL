@@ -29,25 +29,34 @@ def im2col(X, k_height, k_width, padding=1, stride=1):
     reality it can be other ways if it weren't for autograding tests.
     """
     N, C, H, W = X.shape
-    H_out = (H + 2 * padding - k_height) // stride + 1
-    W_out = (W + 2 * padding - k_width) // stride + 1
-    X_padded = np.pad(X, ((0,0), (0,0), (padding, padding), (padding, padding)), mode='constant', constant_values=0)
+    H_padded, W_padded = H + 2 * padding, W + 2 * padding
+    # X_padded = np.pad(X, pad_width=1)
+    X_padded = np.pad(X, ((0, 0), (0, 0), (padding, padding), (padding, padding)), mode='constant')
+
+    H_out = (H_padded - k_height) // stride + 1
+    W_out = (W_padded - k_width) // stride + 1
+
+    i0 = np.repeat(np.arange(k_height), k_width)
+    i0 = np.tile(i0,C)
+    i1 = stride * np.repeat(np.arange(H_out), W_out)
+    j0 = np.tile(np.arange(k_width), k_height*C)
+    j1 = stride * np.tile(np.arange(W_out), H_out)
+    i = i0.reshape(-1, 1) + i1.reshape(1, -1)  #how does this work?
+    j = j0.reshape(-1, 1) + j1.reshape(1, -1)
     
-    # Initialize the im2col matrix with the same original shape
-    cols = np.zeros((C * k_height * k_width, H_out * W_out * N))
     
-    col_idx = 0
-    for n in range(N):  # iterate over the batch
-        for h in range(H_out):
-            for w in range(W_out):
-                patch = X_padded[n, :, h*stride : h*stride+k_height, w*stride : w*stride+k_width]
-                cols[:, col_idx] = patch.flatten()
-                col_idx += 1
     
-    # Transpose the output matrix so that each patch is stored in a row instead of a column
-    rows = cols.T  # Transpose operation
+    k = np.repeat(np.arange(C), k_height * k_width).reshape(-1, 1)
     
-    return rows
+    # Ensure k is broadcastable with i and j
+    # If i and j index spatial locations, k needs to align with those indexes correctly
+    # One approach is to add a new axis to i and j to make their shapes compatible with k for broadcasting
+    # i = i.reshape(1, *i.shape)
+    # j = j.reshape(1, *j.shape)
+    patches = X_padded[:, k, i, j]
+    C = X.shape[1]
+    cols = patches.transpose(1, 2, 0).reshape(k_height * k_width * C, -1)
+    return cols
 
 def im2col_bw(grad_X_col, X_shape, k_height, k_width, padding=1, stride=1):
     """
@@ -60,32 +69,27 @@ def im2col_bw(grad_X_col, X_shape, k_height, k_width, padding=1, stride=1):
     H_out = (H_padded - k_height) // stride + 1
     W_out = (W_padded - k_width) // stride + 1
 
-    # Initialize the gradient tensor with padding
     X_grad_padded = np.zeros((N, C, H_padded, W_padded))
 
-    # Iterate over each column in grad_X_col
-    col_idx = 0
-    for n in range(N):
-        for h in range(H_out):
-            for w in range(W_out):
-                # Map column back to a patch
-                col = grad_X_col[:, col_idx]
-                patch = col.reshape(C, k_height, k_width)
-                # Add patch to corresponding location in the gradient tensor
-                h_start, w_start = h * stride, w * stride
-                X_grad_padded[n, :, h_start:h_start+k_height, w_start:w_start+k_width] += patch
-                col_idx += 1
+    i0 = np.repeat(np.arange(k_height), k_width)
+    i0 = np.tile(i0, C)
+    i1 = stride * np.repeat(np.arange(H_out), W_out)
+    j0 = np.tile(np.arange(k_width), k_height * C)
+    j1 = stride * np.tile(np.arange(H_out), W_out)
+    i = i0.reshape(-1, 1) + i1.reshape(1, -1)
+    j = j0.reshape(-1, 1) + j1.reshape(1, -1)
+    k = np.repeat(np.arange(C), k_height * k_width).reshape(-1, 1)
+
+    # Reverse operation: add gradients instead of indexing
+    np.add.at(X_grad_padded, (slice(None), k, i, j), grad_X_col.reshape(C*k_height*k_width, -1, N).transpose(2,0,1))
 
     # Remove padding
     if padding > 0:
-        X_grad = X_grad_padded[:, :, padding:-padding, padding:-padding]
+        return X_grad_padded[:, :, padding:-padding, padding:-padding]
     else:
-        X_grad = X_grad_padded
+        return X_grad_padded
 
-    return X_grad
-
-
-
+  
 class Transform:
     """
     This is the base class. You do not need to change anything.
@@ -154,14 +158,15 @@ class Flatten(Transform):
         """
         returns Flatten(x)
         """
-        pass
+        self.original_shape = x.shape
+        return x.reshape(x.shape[0], -1)
 
     def backward(self, dloss):
         """
         dLoss is the gradients wrt the output of Flatten
         returns gradients wrt the input to Flatten
         """
-        pass
+        return dloss.reshape(self.original_shape)
 
 
 class Conv(Transform):
@@ -188,6 +193,12 @@ class Conv(Transform):
             -b, b, (self.num_filters, self.C, self.k_height, self.k_width)
         )
         self.b = np.zeros((self.num_filters, 1))
+        self.stride = 1
+        self.pad = 1
+        
+        # Initialize momentum velocity terms for weights and biases
+        self.vW = np.zeros_like(self.W)
+        self.vb = np.zeros_like(self.b)
 
     def forward(self, inputs, stride=1, pad=2):
         """
@@ -196,7 +207,22 @@ class Conv(Transform):
         Return the output of convolution operation in shape (batch_size, num of filters, height, width)
         use im2col here to vectorize your computations
         """
-        pass
+        self.input_cols = im2col(inputs, self.k_height, self.k_width, pad, stride)
+        kernel_reshaped = self.W.reshape((self.num_filters, self.k_height*self.k_width*self.C))
+        conv_output = np.dot(kernel_reshaped, self.input_cols) + self.b
+        
+        H_padded, W_padded = self.H + 2 * pad, self.Width + 2 * pad
+
+        H_out = (H_padded - self.k_height) // stride + 1
+        W_out = (W_padded - self.k_width) // stride + 1
+        
+        batch_size = inputs.shape[0]
+        
+        conv_output = conv_output.reshape(self.num_filters, H_out, W_out, batch_size)
+        conv_output = conv_output.transpose(3,0,1,2)
+        
+        return conv_output 
+        
 
     def backward(self, dloss):
         """
@@ -205,14 +231,31 @@ class Conv(Transform):
         Return [gradient wrt weights, gradient wrt biases, gradient wrt input to this layer]
         use im2col_bw here to vectorize your computations
         """
-        pass
-
+        self.dloss = dloss
+        # dloss_reshaped = dloss.reshape(self.num_filters, -1)
+        dloss_reshaped = dloss.transpose(1, 2, 3, 0).reshape(self.num_filters, -1)
+        
+        grad_b = np.sum(dloss, axis=(0, 2, 3)).reshape(-1, 1)
+        grad_W = np.dot(dloss_reshaped, self.inputs_col.T).reshape(self.W.shape)
+        
+        W_reshaped = self.W.reshape(self.num_filters, -1)
+        dX_col = np.dot(W_reshaped.T, dloss_reshaped)
+        grad_X = im2col_bw(dX_col, (dloss.shape[0], self.C, self.H, self.Width), self.k_height, self.k_width, self.pad, self.stride)
+        
+        return grad_W, grad_b, grad_X
+    
     def update(self, learning_rate=0.001, momentum_coeff=0.5):
         """
         Update weights and biases with gradients calculated by backward()
         Use the same momentum formula as in Problem 5.
         """
-        pass
+        # Update velocity and then parameters for weights
+        self.vW = momentum_coeff * self.vW + learning_rate * self.grad_W
+        self.W -= self.vW
+
+        # Update velocity and then parameters for biases
+        self.vb = momentum_coeff * self.vb + learning_rate * self.grad_b
+        self.b -= self.vb
 
     def get_wb_conv(self):
         """
@@ -231,21 +274,77 @@ class MaxPool(Transform):
         filter_shape is (filter_height, filter_width)
         stride is a scalar
         """
-        pass
+        self.filter_shape = filter_shape
+        self.stride = stride
+        self.cache = {'max_indices': []} # Cache to store information needed for backward pass
 
     def forward(self, inputs):
         """
         forward pass of MaxPool
         inputs: (N, C, H, W)
         """
-        pass
+        N, C, H, W = inputs.shape
+        FH, FW = self.filter_shape
+        stride = self.stride
+
+        # Calculate output dimensions
+        H_out = (H - FH) // stride + 1
+        W_out = (W - FW) // stride + 1
+
+        # Reshape and stride input to bring non-overlapping regions into separate rows
+        # This effectively "tiles" the input so each pooling region is flattened into a row
+        strided_input = np.lib.stride_tricks.as_strided(
+            inputs,
+            shape=(N, C, H_out, W_out, FH, FW),
+            strides=(*inputs.strides[:2], inputs.strides[2]*stride, inputs.strides[3]*stride, *inputs.strides[2:]),
+            writeable=False
+        )
+
+        # Perform max pooling
+        pooled_output = np.max(strided_input, axis=(4, 5))
+
+        # Store the indices of max values for the backward pass
+        self.cache['input_shape'] = inputs.shape
+        max_indices = np.argmax(strided_input.reshape(N, C, H_out, W_out, FH*FW), axis=4)
+        self.cache['max_indices'] = np.vstack(np.unravel_index(max_indices, (FH, FW))).T
+
+        return pooled_output
+        
+        
 
     def backward(self, dloss):
         """
         dloss is the gradients wrt the output of forward()
         """
-        pass
+        N, C, H, W = self.cache['input_shape']
+        FH, FW = self.filter_shape
+        stride = self.stride
+        
+        # Initialize gradient tensor with zeros
+        dX = np.zeros((N, C, H, W))
+        
+        # Retrieve the input shape and max indices from the cache
+        max_indices = np.array(self.cache['max_indices'])
 
+        # For each channel in each sample, place the gradient in the position of the max value
+        for n in range(N):
+            for c in range(C):
+                # Extract indices of max values for the current channel
+                channel_max_indices = max_indices[(max_indices[:, 0] == n) & (max_indices[:, 1] == c)]
+                
+                # Convert multi-dimensional indices to flat indices
+                flat_max_indices = np.ravel_multi_index(
+                    (channel_max_indices[:, 2], channel_max_indices[:, 3]),
+                    (H, W)
+                )
+                
+                # Extract the corresponding gradients
+                channel_dloss = dloss[n, c].flatten()
+                
+                # Use flat indices to distribute gradients
+                np.add.at(dX[n, c].flatten(), flat_max_indices, channel_dloss)
+
+        return dX.reshape(N, C, H, W)
 
 class LinearLayer(Transform):
     """
@@ -270,7 +369,9 @@ class LinearLayer(Transform):
         Forward pass of linear layer
         inputs shape (batch_size, indim)
         """
-        pass
+        self.inputs = inputs  # Store for use in backward pass
+        return np.dot(inputs, self.W) + self.b.T  # Adding bias after dot product
+        
 
     def backward(self, dloss):
         """
@@ -278,13 +379,35 @@ class LinearLayer(Transform):
         dloss shape (batch_size, outdim)
         Return [gradient wrt weights, gradient wrt biases, gradient wrt input to this layer]
         """
-        pass
+        # Gradient w.r.t. weights
+        grad_W = np.dot(self.inputs.T, dloss)
+
+        # Gradient w.r.t. biases
+        grad_b = np.sum(dloss, axis=0, keepdims=True).T
+
+        # Gradient w.r.t. input
+        grad_inputs = np.dot(dloss, self.W.T)
+
+        self.grad_W = grad_W
+        self.grad_b = grad_b
+        return grad_W, grad_b, grad_inputs
 
     def update(self, learning_rate=0.001, momentum_coeff=0.5):
         """
         Similar to Conv.update()
         """
-        pass
+        if not hasattr(self, 'vW'):
+            self.vW = np.zeros_like(self.W)
+        if not hasattr(self, 'vb'):
+            self.vb = np.zeros_like(self.b)
+
+        # Update velocity and then parameters for weights
+        self.vW = momentum_coeff * self.vW + learning_rate * self.grad_W
+        self.W -= self.vW
+
+        # Update velocity and then parameters for biases
+        self.vb = momentum_coeff * self.vb + learning_rate * self.grad_b
+        self.b -= self.vb
 
     def get_wb_fc(self):
         """
@@ -306,21 +429,36 @@ class SoftMaxCrossEntropyLoss:
         returns loss as scalar
         (your loss should be the mean loss over the batch)
         """
-        pass
+        # Stable softmax computation
+        exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))
+        probabilities = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+        self.probabilities = probabilities
+        self.labels = labels
+        
+        # Cross-entropy loss
+        loss = -np.sum(labels * np.log(probabilities + 1e-15)) / logits.shape[0]
+
+        if get_predictions:
+            return loss, np.argmax(probabilities, axis=1)
+        return loss
 
     def backward(self):
         """
         return shape (batch_size, num_classes)
         Remeber to divide by batch_size so the gradients correspond to the mean loss
         """
-        pass
+        batch_size = self.labels.shape[0]
+        # Gradient of softmax-cross entropy loss
+        grad = (self.probabilities - self.labels) / batch_size
+        return grad
 
     def getAccu(self):
         """
         Implement as you wish, not autograded.
         """
-        pass
-
+        correct_preds = np.equal(predictions, np.argmax(labels, axis=1))
+        accuracy = np.mean(correct_preds.astype(np.float))
+        return accuracy
 
 class ConvNet:
     """
