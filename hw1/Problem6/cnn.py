@@ -153,6 +153,9 @@ class Flatten(Transform):
     """
     Implement this class
     """
+    
+    def __init__(self):
+        self.original_shape = None  # To store the shape of the input tensor
 
     def forward(self, x):
         """
@@ -236,7 +239,7 @@ class Conv(Transform):
         dloss_reshaped = dloss.transpose(1, 2, 3, 0).reshape(self.num_filters, -1)
         
         grad_b = np.sum(dloss, axis=(0, 2, 3)).reshape(-1, 1)
-        grad_W = np.dot(dloss_reshaped, self.inputs_col.T).reshape(self.W.shape)
+        grad_W = np.dot(dloss_reshaped, self.input_cols.T).reshape(self.W.shape)
         
         W_reshaped = self.W.reshape(self.num_filters, -1)
         dX_col = np.dot(W_reshaped.T, dloss_reshaped)
@@ -316,35 +319,33 @@ class MaxPool(Transform):
         """
         dloss is the gradients wrt the output of forward()
         """
-        N, C, H, W = self.cache['input_shape']
+        N, C, H_out, W_out = dloss.shape
         FH, FW = self.filter_shape
         stride = self.stride
-        
-        # Initialize gradient tensor with zeros
-        dX = np.zeros((N, C, H, W))
-        
-        # Retrieve the input shape and max indices from the cache
-        max_indices = np.array(self.cache['max_indices'])
+        input_shape = self.cache['input_shape']
+        max_indices = self.cache['max_indices']
 
-        # For each channel in each sample, place the gradient in the position of the max value
-        for n in range(N):
-            for c in range(C):
-                # Extract indices of max values for the current channel
-                channel_max_indices = max_indices[(max_indices[:, 0] == n) & (max_indices[:, 1] == c)]
-                
-                # Convert multi-dimensional indices to flat indices
-                flat_max_indices = np.ravel_multi_index(
-                    (channel_max_indices[:, 2], channel_max_indices[:, 3]),
-                    (H, W)
-                )
-                
-                # Extract the corresponding gradients
-                channel_dloss = dloss[n, c].flatten()
-                
-                # Use flat indices to distribute gradients
-                np.add.at(dX[n, c].flatten(), flat_max_indices, channel_dloss)
+        # Initialize gradient array for input with zeros
+        grad_input = np.zeros(input_shape)
 
-        return dX.reshape(N, C, H, W)
+        # Prepare an array for unraveling max_indices to the shape of grad_input
+        unravel_index = np.zeros((max_indices.shape[0], max_indices.shape[1] + 2), dtype=int)
+        unravel_index[:, 2:] = max_indices
+
+        # Compute the output indices for each max_index
+        n_indices, c_indices = np.meshgrid(np.arange(N), np.arange(C), indexing='ij')
+        unravel_index[:, 0] = n_indices.flatten()
+        unravel_index[:, 1] = c_indices.flatten()
+
+        # Calculate the correct indices in the flattened input
+        flat_indices = np.ravel_multi_index(unravel_index.T, input_shape)
+
+        # Scatter the gradients back to the positions of max values
+        # Reshape dloss to match the flat indices shape and then scatter
+        dloss_flat = dloss.transpose(0, 1, 2, 3).flatten()
+        np.add.at(grad_input.flatten(), flat_indices, dloss_flat)
+
+        return grad_input.reshape(input_shape)
 
 class LinearLayer(Transform):
     """
