@@ -116,7 +116,8 @@ class LinearMap(Transform):
         return shape (batch_size, outdim)
         """
         self.x = x
-        return np.dot(x, self.W) + self.b
+        # return np.dot(x, self.W.T) + self.b
+        return x @ self.W + self.b.T
         
     def backward(self, grad_wrt_out):
         """
@@ -124,7 +125,7 @@ class LinearMap(Transform):
         return shape (batch_size, indim)
         Your backward call should Accumulate gradients.
         """
-        self.gradW = self.x.T.dot(grad_wrt_out)
+        self.gradW = self.x.T @ grad_wrt_out
         self.gradb = np.sum(grad_wrt_out, axis=0)
         return grad_wrt_out.dot(self.W.T)
 
@@ -135,11 +136,11 @@ class LinearMap(Transform):
         Make sure your gradient step takes into account momentum.
         Use alpha as the momentum parameter.
         """
-        self.momentumW = self.alpha * self.momentumW + (1 - self.alpha) * self.gradW
-        self.momentumb = self.alpha * self.momentumb + (1 - self.alpha) * self.gradb
-        self.W -= self.lr * self.momentumW
-        self.b -= self.lr * self.momentumb
-
+        self.momentumW = self.alpha * self.momentumW - self.lr * self.gradW
+        self.W += self.momentumW
+        self.momentumb = self.alpha * self.momentumb - self.lr * self.gradb.reshape(self.b.shape)
+        self.b -= self.momentumb
+        
     def zerograd(self):
         # reset parameters
         self.gradW = np.zeros_like(self.W)
@@ -173,8 +174,10 @@ class SoftmaxCrossEntropyLoss:
         returns loss as scalar
         (your loss should be a mean value on batch_size)
         """
-        exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))
-        self.softmax = exps / np.sum(exps, axis=1, keepdims=True)
+        self.logits = logits
+        self.exps = np.exp(logits - np.max(logits, axis=1, keepdims=True))
+        self.softmax = self.exps
+        self.softmax /= np.sum(self.exps, axis=1, keepdims=True)
         self.labels = labels
         loss = -np.sum(labels * np.log(self.softmax + 1e-8)) / logits.shape[0]
         return loss
@@ -208,8 +211,8 @@ class SingleLayerMLP(Transform):
         self.linear1 = LinearMap(indim, hiddenlayer, alpha, lr)
         self.relu = ReLU()
         self.linear2 = LinearMap(hiddenlayer, outdim, alpha, lr)
-        self.alpha = alpha
-        self.lr = lr
+        # self.alpha = alpha
+        # self.lr = lr
 
     def forward(self, x, train=True):
         """
@@ -272,7 +275,7 @@ class TwoLayerMLP(Transform):
 
     def __init__(self, inp, outp, hiddenlayers=[100, 100], alpha=0.1, lr=0.01):
         Transform.__init__(self)
-        `self.linear1 = LinearMap(inp, hiddenlayers[0], alpha, lr)
+        self.linear1 = LinearMap(inp, hiddenlayers[0], alpha, lr)
         self.relu1 = ReLU()
         self.linear2 = LinearMap(hiddenlayers[0], hiddenlayers[1], alpha, lr)
         self.relu2 = ReLU()
