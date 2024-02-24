@@ -82,6 +82,7 @@ class RBM:
         self.k = k
         self.lr = lr
         self.max_epochs = max_epochs
+        # self.alpha = alpha
         
         # Initialize hidden and visible biases with zeros
         # Initialize visible weights with Xavier (random_weight_init above)
@@ -151,19 +152,13 @@ class RBM:
             1. Sampled visible vector, binary in our experiment
                 shape (n_visible,)
         """
-        if v_true is None:
-            v_true = np.zeros((self.n_visible,))
+        v_sample = np.random.binomial(1, v_prob, size=(self.n_visible,))
+
         if v_observation is None:
-            v_observation = np.ones((self.n_visible,))  # Assuming 1 indicates unobserved
+            return v_sample
+        else:
+            return np.where(v_observation, v_true, v_sample)
 
-        print(v_prob.shape) 
-        v_fixed = v_true * v_observation #masking out the unobserved values - this output is v_true but with all the unobserved points clipped to zero.
-        print(v_fixed.shape) 
-        v_naive = np.random.binomial(1, v_prob, size=(self.n_visible,)) #visible unit sampling for ALL elements. In these, should zero out those that are observed values.
-        print(v_naive.shape)
-        v_unobserved = 1 - v_observation
-
-        return v_fixed + (v_naive * v_unobserved)
     
     def gibbs_k(self, v, k=0, v_true=None, v_observation=None):
         """ 
@@ -187,16 +182,18 @@ class RBM:
         v0 = binary_data(v)
         h0_prob = self.h_v(v0)
         # complete
-        
+        h0 = self.sample_h(h0_prob)
         h_prob = h0_prob
+        h_sample = h0
+
         for i in range(k if k > 0 else self.k):
             # complete
             # hi_prob = [] #end of the loop a new h_prob should be calculated. And then entered to all subsequent computations. How?
-            h_sample = sample_h(h_prob)
-            v_prob = v_h(h_sample) #again, h_sample should change every iteration, as hi_prob changes.
-            v_sample = sample_v(v_prob)
-            h_prob = h_v(v_sample)
-            
+            v_prob = self.v_h(h_sample) #again, h_sample should change every iteration, as hi_prob changes.
+            v_sample = self.sample_v(v_prob)
+            h_prob = self.h_v(v_sample)
+            h_sample = self.sample_h(h_prob)
+
             print("complete")
 
         return h0, v0, h_sample, v_sample, h_prob, v_prob
@@ -209,11 +206,12 @@ class RBM:
         Return: self with updated weights and biases
             Hint: Compute all the gradients before updating weights and biases.
         """
-
         h0, v0, h_sample, v_sample, h_prob, v_prob = self.gibbs_k(x)
+
+        self.W = self.W + self.lr * (h0 @ x - h_prob @ v_sample)
+        self.b = self.b + self.lr * (h0 - h_prob)
+        self.c = self.c + self.lr * (x-h_prob)
         # complete
-
-
 
     def evaluate(self, X, k=0):
         """ 
@@ -269,6 +267,7 @@ if __name__ == "__main__":
     parser.add_argument('-valid', type=str, help='validation file path', default='./data/digitsvalid.txt')
     parser.add_argument('-test', type=str, help="test file path", default="./data/digitstest.txt")
     parser.add_argument('-max_epochs', type=int, help="maximum epochs", default=10)
+    # parser.add_argument('-alpha', type=float, help="maximum epochs", default=10)
 
     parser.add_argument('-n_hidden', type=int, help="num of hidden units", default=250)
     parser.add_argument('-k', type=int, help="CD-k sampling", default=3)
@@ -303,4 +302,3 @@ if __name__ == "__main__":
 
     # you can access the train and validation error trajectories
     # from the self.loss_curve_train_ and self.loss_curve_valid_ attributes
-
